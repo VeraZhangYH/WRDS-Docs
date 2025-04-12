@@ -75,51 +75,54 @@ server {
     # SSL configuration
     ssl_certificate /etc/nginx/ssl/myserver.crt;
     ssl_certificate_key /etc/nginx/ssl/myserver.key;
-    
+
     # Security settings
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers on;
-    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:D>
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
-    
+
     # Additional security headers
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options nosniff;
     add_header X-XSS-Protection "1; mode=block";
     add_header X-Frame-Options SAMEORIGIN;
-    
-    # Proxy settings for Keycloak
+
+    # Proxy settings for Keycloak - CHANGED from localhost to 127.0.0.1
     location / {
-        proxy_pass http://localhost:8081;
+        proxy_pass http://172.18.0.3:8081;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
-        
+
         # WebSocket support (for Keycloak admin console)
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        
-        # Timeout settings
-        proxy_connect_timeout 90;
-        proxy_send_timeout 90;
-        proxy_read_timeout 90;
+
+        # Increased timeouts to prevent connection errors
+        proxy_connect_timeout 120;
+        proxy_send_timeout 120;
+        proxy_read_timeout 120;
     }
-    
-    # Optimize file access for static content
+
+    # Optimize file access for static content - CHANGED from localhost to 127.0.0.1
     location ~* \.(js|css|png|jpg|jpeg|gif|ico)$ {
-        proxy_pass http://localhost:8081;
-        proxy_set_header Host $host;
-        proxy_cache_valid 200 1d;
+        proxy_pass http://172.18.0.3:8081;
+        proxy_set_header Host $host:$server_port;
         proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host:$server_port;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_cache_valid 200 1d;
         access_log off;
         expires 30d;
         add_header Pragma public;
         add_header Cache-Control "public";
     }
 }
+
 ```
 
 ### Step 4: Update Docker Compose for Keycloak
@@ -146,40 +149,49 @@ services:
     image: quay.io/keycloak/keycloak:22.0.5
     container_name: keycloak-new
     environment:
-      # Database configuration
+     * # Database configuration*
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: yanci
       
-      # Admin credentials
+     * # Admin credentials*
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: yanci
       
-      # HTTP configuration - updated for reverse proxy
+     * # Frontend URL configuration (critical for redirects)*
+      KC_HOSTNAME_URL: https://192.168.168.118:8080
+      KC_HOSTNAME_ADMIN_URL: https://192.168.168.118:8080
+
+     * # HTTP configuration - updated for reverse proxy*
       KC_HTTP_ENABLED: "true"
-      KC_HTTP_PORT: "8081"  # Changed to 8081 for Nginx proxy
-      KC_HOSTNAME: 192.168.168.118
+      KC_HTTP_PORT: "8081" * # Changed to 8081 for Nginx proxy*
       
-      # Proxy settings
+     * # Proxy settings*
       KC_PROXY: edge
+      KC_PROXY_ADDRESS_FORWARDING: "true"
       
-      # HTTPS settings
+     * # HTTPS settings*
       KC_HTTPS_REQUIRED: "none"
       KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_HOSTNAME_STRICT: "false"
     
-    # Changed to production mode
+   * # Changed to production mode*
     command: start
     
-    # Updated port mapping
+   * # Updated port mapping*
     ports:
       - "8081:8081"
+      
+   * # No need for certificate mounts as Nginx will handle SSL*
+   * # volumes:*
+   * #   - ../myserver.crt:/opt/keycloak/conf/server.crt.pem*
+   * #   - ../myserver.key:/opt/keycloak/conf/server.key.pem*
     
     depends_on:
       - postgres
     networks:
-      - keycloak-network
+- keycloak-network
 
 volumes:
   postgres_data:

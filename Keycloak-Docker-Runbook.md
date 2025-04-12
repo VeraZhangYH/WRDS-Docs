@@ -16,6 +16,7 @@ The deployment is managed through the following `docker-compose.yml`:
 
 ```yaml
 version: '3'
+
 services:
   postgres:
     image: postgres:14
@@ -28,7 +29,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - keycloak-network
-      
+
   keycloak:
     image: quay.io/keycloak/keycloak:22.0.5
     container_name: keycloak-new
@@ -42,10 +43,15 @@ services:
       KC_HTTP_ENABLED: "true"
       KC_HOSTNAME: 192.168.168.118
       KC_HTTPS_REQUIRED: "none"
-    command:
-      - start
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_PROXY: edge
+    command: start-dev
     ports:
       - "8080:8080"
+    # Remove certificate mounts if just using HTTP
+    # volumes:
+    #   - ../myserver.crt:/opt/keycloak/conf/server.crt.pem
+    #   - ../myserver.key:/opt/keycloak/conf/server.key.pem
     depends_on:
       - postgres
     networks:
